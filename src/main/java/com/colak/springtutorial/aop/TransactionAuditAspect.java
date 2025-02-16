@@ -29,12 +29,13 @@ public class TransactionAuditAspect {
     public Object aroundCrudOperations(ProceedingJoinPoint joinPoint) throws Throwable {
 
         // Skip if not inside an @AuditChanges method
-        if (!isAuditChangesMethod()) {
+        if (!AnnotationChecker.isAnnotationPresent()) {
             return joinPoint.proceed();
         }
 
         if (!TransactionSynchronizationManager.isActualTransactionActive()) {
-            throw new IllegalStateException("No active transaction exists for " + joinPoint.getSignature());
+            log.info("No active transaction exists for {}. We can not generate Changes rows", joinPoint.getSignature());
+            return joinPoint.proceed();
         }
         MethodSignature signature = (MethodSignature) joinPoint.getSignature();
         Method method = signature.getMethod();
@@ -48,7 +49,8 @@ public class TransactionAuditAspect {
         }
 
         if (entity == null) {
-            throw new IllegalArgumentException("First argument cannot be null for " + joinPoint.getSignature());
+            log.info("First argument is null for {}. We can not generate Changes rows", joinPoint.getSignature());
+            return joinPoint.proceed();
         }
 
         if (isSaveMethod(methodName)) {
@@ -73,30 +75,6 @@ public class TransactionAuditAspect {
         return joinPoint.proceed();
     }
 
-
-    private boolean isAuditChangesMethod() {
-        StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
-        for (StackTraceElement element : stackTrace) {
-            try {
-                Class<?> clazz = Class.forName(element.getClassName());
-                Method method = findMethod(clazz, element.getMethodName());
-                if (method != null && method.isAnnotationPresent(AuditChanges.class)) {
-                    return true;
-                }
-            } catch (ClassNotFoundException ignored) {
-            }
-        }
-        return false;
-    }
-
-    private Method findMethod(Class<?> clazz, String methodName) {
-        for (Method method : clazz.getDeclaredMethods()) {
-            if (method.getName().equals(methodName)) {
-                return method;
-            }
-        }
-        return null;
-    }
 
     private boolean isSaveMethod(String methodName) {
         return methodName.startsWith("save");
