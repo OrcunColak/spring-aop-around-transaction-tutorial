@@ -1,5 +1,6 @@
 package com.colak.springtutorial.aop;
 
+import com.colak.springtutorial.aop.impl.ChangeManager;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.extern.slf4j.Slf4j;
@@ -7,12 +8,11 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.Objects;
 
 @Aspect
 @Component
@@ -21,6 +21,13 @@ public class TransactionAuditAspect {
 
     @PersistenceContext
     private EntityManager entityManager;
+
+    private ChangeManager changeManager;
+
+    @Autowired
+    public void setChangeManager(ChangeManager changeManager) {
+        this.changeManager = changeManager;
+    }
 
     @Around("execution(* org.springframework.data.repository.CrudRepository.save*(..)) || " +
             "execution(* org.springframework.data.repository.CrudRepository.delete*(..)) || " +
@@ -43,7 +50,7 @@ public class TransactionAuditAspect {
         Object[] args = joinPoint.getArgs();
 
         Object entity = null;
-
+        Object oldEntity = null;
         if (args.length > 0) {
             entity = args[0];
         }
@@ -53,8 +60,8 @@ public class TransactionAuditAspect {
             return joinPoint.proceed();
         }
 
+        ChangeManager.OperationType operationType = ChangeManager.OperationType.IGNORE;
         if (isSaveMethod(methodName)) {
-            Object oldEntity = null;
 
             Object primaryKey = entityManager.getEntityManagerFactory()
                     .getPersistenceUnitUtil().getIdentifier(entity);
@@ -63,16 +70,21 @@ public class TransactionAuditAspect {
             }
 
             if (oldEntity != null) {
-                writeUpdateChanges(oldEntity, entity); // This is an update
+                operationType = ChangeManager.OperationType.UPDATE;
             } else {
-                writeCreateChanges(entity); // This a creation
+                operationType = ChangeManager.OperationType.CREATE;
             }
         } else if (isDeleteMethod(methodName)) {
-            writeDeleteChanges(entity);
+            operationType = ChangeManager.OperationType.DELETE;
         }
 
+
         // Execute the actual CRUD operation
-        return joinPoint.proceed();
+        Object result = joinPoint.proceed();
+
+        changeManager.writeChange(entity, oldEntity, operationType);
+
+        return result;
     }
 
 
@@ -82,44 +94,5 @@ public class TransactionAuditAspect {
 
     private boolean isDeleteMethod(String methodName) {
         return methodName.startsWith("delete");
-    }
-
-    private void writeDeleteChanges(Object entity) {
-        if (entity == null) return;
-
-        Class<?> clazz = entity.getClass();
-
-        log.info("Object is deleted");
-
-        // AuditLog auditLog = new AuditLog(entityName, entityId, "DELETED", "EXISTED", "DELETED");
-        // auditLogService.saveAuditLog(auditLog);
-    }
-
-    private void writeCreateChanges(Object entity) {
-    }
-
-    private void writeUpdateChanges(Object oldEntity, Object newEntity) {
-
-        Class<?> clazz = oldEntity.getClass();
-
-        for (Field field : clazz.getDeclaredFields()) {
-            field.setAccessible(true);
-            try {
-                Object oldValue = field.get(oldEntity);
-                Object newValue = field.get(newEntity);
-
-                if (!Objects.equals(oldValue, newValue)) {
-                    log.info("Fields are different");
-
-                    // AuditLog auditLog = new AuditLog(entityName, entityId, field.getName(),
-                    //         oldValue != null ? oldValue.toString() : "null",
-                    //         newValue != null ? newValue.toString() : "null");
-                    //
-                    // auditLogService.saveAuditLog(auditLog);
-                }
-            } catch (IllegalAccessException exception) {
-                log.error("IllegalAccessException", exception);
-            }
-        }
     }
 }
