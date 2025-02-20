@@ -79,12 +79,11 @@ public class TransactionAuditAspect {
         }
 
 
-        // Execute the actual CRUD operation
-        Object result = joinPoint.proceed();
-
+        // Write change before the CRUD operation, because our reference entity will be modified
         changeManager.writeChange(entity, oldEntity, operationType);
 
-        return result;
+        // Execute the actual CRUD operation
+        return joinPoint.proceed();
     }
 
 
