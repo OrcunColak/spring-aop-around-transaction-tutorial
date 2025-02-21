@@ -1,7 +1,7 @@
 package com.colak.springtutorial.controller;
 
-import com.colak.springtutorial.jpa.Company;
-import com.colak.springtutorial.service.CompanyService;
+import com.colak.springtutorial.service.CompanyCommand;
+import com.colak.springtutorial.service.impl.CompanyServiceUseCaseImpl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -13,13 +13,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class CompanyController {
 
-    private final CompanyService companyService;
+    private final CompanyServiceUseCaseImpl companyService;
 
     @PostMapping("/save")
     public void save(@RequestBody CompanyDto dto) {
-        Company company = new Company();
-        company.setId(dto.getId());
-        company.setName(dto.getName());
-        companyService.save(company);
+
+        CompanyCommand command = new CompanyCommand();
+        command.setId(dto.getId());
+        command.setName(dto.getName());
+
+        companyService.process(command);
     }
 }
